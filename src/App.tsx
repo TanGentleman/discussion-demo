@@ -18,7 +18,7 @@ export default function App() {
   return (
     <main className="chat">
       <header>
-        <h1>Acme Chat</h1>
+        <h1>Tan Talk</h1>
         <p>
           Connected as <strong>{NAME}</strong>
         </p>

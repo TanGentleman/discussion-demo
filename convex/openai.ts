@@ -8,7 +8,7 @@ const overrideModelName = "cognitivecomputations/dolphin-2.5-mixtral-8x7b";
 
 // How often to update the DB to stream the response back to the client
 // Recommended is 200, but it is smoother at lower values
-const chunkCacheSize = 50;
+const chunkCacheSize = 25;
 
 // const allowedBaseUrls = ["https://api.openai.com/v1", "https://api.together.xyz/v1"];
 // const allowedModelNames = ["Snowflake/snowflake-arctic-instruct", "Qwen/Qwen2-72B-Instruct", "cognitivecomputations/dolphin-2.5-mixtral-8x7b"];
@@ -29,11 +29,13 @@ export const chat = internalAction({
         // model: "gpt-3.5-turbo", // "gpt-4" also works, but is so slow!
         // Changed June 11 2024: Added TogetherAI as a provider
         model: overrideModelName,
+        max_tokens: 1000,
+        temperature: 0.3,
         stream: true,
         messages: [
           {
             role: "system",
-            content: "You are a terse bot in a group chat responding to q's.",
+            content: "You are a terse bot in a group chat responding to q's. Respond naturally.",
           },
           ...messages.map(({ body, author }) => ({
             role:
