@@ -17,10 +17,10 @@ export const list = query({
 });
 
 export const send = mutation({
-  args: { body: v.string(), author: v.string() },
-  handler: async (ctx, { body, author }) => {
+  args: { body: v.string(), author: v.string(), delay: v.optional(v.number())},
+  handler: async (ctx, { body, author, delay }) => {
     // Mark complete as true as long as the body is not the string "..."
-    const complete = (body !== "..." && author === "TanAI");
+    const complete = !(body === "..." && author === "TanAI");
     // Send our message.
     await ctx.db.insert("messages", { body, author, complete });
 
@@ -35,10 +35,12 @@ export const send = mutation({
       const messageId = await ctx.db.insert("messages", {
         author: "TanAI",
         body: "...",
-        complete: false
+        complete: complete
       });
+      // use delay if provided, otherwise default to 0.
+      const delayInMs = delay || 0;
       // Schedule an action that calls ChatGPT and updates the message.
-      ctx.scheduler.runAfter(0, internal.openai.chat, { messages, messageId });
+      ctx.scheduler.runAfter(delayInMs, internal.openai.chat, { messages, messageId });
     }
   },
 });
