@@ -3,16 +3,17 @@ import { internalAction } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 
-const overrideBaseUrl = "https://api.together.xyz/v1";
-const overrideModelName = "cognitivecomputations/dolphin-2.5-mixtral-8x7b";
+import secretConfig from "./secretConfig";
+
+const overrideBaseUrl = secretConfig.baseURL || "https://api.openai.com/v1";
+const overrideModelName = secretConfig.modelName || "gpt-3.5-turbo";
 
 // How often to update the DB to stream the response back to the client
-// Recommended is 200, but it is smoother at lower values
-const chunkCacheSize = 25;
+// Recommended is 200 at scale, but leave at 1 for smooth local testing
+const chunkCacheSize = 1;
 
-// const allowedBaseUrls = ["https://api.openai.com/v1", "https://api.together.xyz/v1"];
-// const allowedModelNames = ["Snowflake/snowflake-arctic-instruct", "Qwen/Qwen2-72B-Instruct", "cognitivecomputations/dolphin-2.5-mixtral-8x7b"];
-
+// EXPERIMENTAL MAGIC COMMANDS
+const magicStrings = ["*RESET*", "*DEL*"];
 
 type ChatParams = {
   messages: Doc<"messages">[];
@@ -20,10 +21,30 @@ type ChatParams = {
 };
 export const chat = internalAction({
   handler: async (ctx, { messages, messageId }: ChatParams) => {
-    const apiKey = process.env.OPENAI_API_KEY!;
+    const apiKey = process.env.OPENAI_API_KEY || secretConfig.apiKey;
     const baseURL = overrideBaseUrl;
     const openai = new OpenAI({ baseURL, apiKey });
 
+    if (messages.length !== 0) {
+      const currMessage = messages[messages.length - 1].body;
+      // If the message includes a magic string, handle it
+      for (const magicString of magicStrings) {
+        if (currMessage.endsWith(magicString)) {
+          if (magicString === "*RESET*") {
+            // call internal.clearTable
+            await ctx.runMutation(internal.messages.clearTable);
+            return;
+          }
+          if (magicString === "*DEL*") {
+            // call internal.deleteTable
+            await ctx.runMutation(internal.messages.removeLast);
+            return;
+          }
+        throw new Error(`Magic string ${magicString} not implemented yet`);
+        return;
+        }
+      }
+    }
     try {
       const stream = await openai.chat.completions.create({
         // model: "gpt-3.5-turbo", // "gpt-4" also works, but is so slow!
