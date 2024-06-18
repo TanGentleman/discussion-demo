@@ -1,6 +1,6 @@
 // Sensitive API keys should be stored in the environment variables using `npx convex env`
-const togetherSecretKey = "Experimental TogetherAI key"
-const openAISecretKey = "Experimental OpenAI key"
+const togetherSecretKey = process.env.OPENAI_API_KEY || "BAD API KEY"
+// const openAISecretKey = process.env.OPENAI_API_KEY
 
 const togetherBaseURL = "https://api.together.xyz/v1"
 const togetherModelName = "Qwen/Qwen2-72B-Instruct"
@@ -26,15 +26,15 @@ const ollamaConfig: secretConfigSchema = {
     apiKey: "Ollama"
 };
 
-const openAIConfig: secretConfigSchema = {
-    modelName: "gpt-3.5-turbo",
-    apiKey: openAISecretKey
-};
+// const openAIConfig: secretConfigSchema = {
+//     modelName: "gpt-3.5-turbo",
+//     apiKey: openAISecretKey
+// };
 
-const secretConfig: secretConfigSchema = {
+const togetherConfig: secretConfigSchema = {
     baseURL: togetherBaseURL,
     modelName: togetherModelName,
     apiKey: togetherSecretKey
 };
 
-export default ollamaConfig;
+export default togetherConfig;
