@@ -10,9 +10,10 @@ const overrideModelName = secretConfig.modelName || "gpt-3.5-turbo";
 
 // How often to update the DB to stream the response back to the client
 // Recommended is 200 at scale, but leave at 1 for smooth local testing
-const chunkCacheSize = 1;
+const chunkCacheSize = 100;
 
 // EXPERIMENTAL MAGIC COMMANDS
+const experimentalMode = true;
 const magicStrings = ["*RESET*", "*DEL*"];
 
 type ChatParams = {
@@ -21,11 +22,15 @@ type ChatParams = {
 };
 export const chat = internalAction({
   handler: async (ctx, { messages, messageId }: ChatParams) => {
-    const apiKey = process.env.OPENAI_API_KEY || secretConfig.apiKey;
+    if (messages.length === 0) {
+      throw new Error("No messages found!");
+    }
+    // WARNING: This prioritizes the secretConfig API key over the environment variable!
+    const apiKey = secretConfig.apiKey || process.env.OPENAI_API_KEY;
     const baseURL = overrideBaseUrl;
     const openai = new OpenAI({ baseURL, apiKey });
 
-    if (messages.length !== 0) {
+    if (experimentalMode) {
       const currMessage = messages[messages.length - 1].body;
       // If the message includes a magic string, handle it
       for (const magicString of magicStrings) {
@@ -41,7 +46,6 @@ export const chat = internalAction({
             return;
           }
         throw new Error(`Magic string ${magicString} not implemented yet`);
-        return;
         }
       }
     }
@@ -60,7 +64,7 @@ export const chat = internalAction({
           },
           ...messages.map(({ body, author }) => ({
             role:
-              author === "ChatGPT" ? ("assistant" as const) : ("user" as const),
+              author === "TanAI" ? ("assistant" as const) : ("user" as const),
             content: body,
           })),
         ],
@@ -77,20 +81,20 @@ export const chat = internalAction({
             await ctx.runMutation(internal.messages.update, {
               messageId,
               body,
+              complete: false,
             });
             partSize = 0;
           }
         }
       }
-      // If full stream has not been flushed yet
-      if (partSize > 0) {
-        // Send a last update to the client
-        await ctx.runMutation(internal.messages.update, {
-          messageId,
-          body,
-        });
-        partSize = 0;
-      }
+      // Update with finalized body and set complete to true
+      await ctx.runMutation(internal.messages.update, {
+        messageId,
+        body,
+        complete: true,
+      });
+      partSize = 0; 
+      // partSize should always be zero to ensure stream has been flushed into DB
     } catch (e) {
       if (e instanceof OpenAI.APIError) {
         console.error(e.status);
@@ -98,6 +102,7 @@ export const chat = internalAction({
         await ctx.runMutation(internal.messages.update, {
           messageId,
           body: "OpenAI call failed: " + e.message,
+          complete: false
         });
         console.error(e);
       } else {

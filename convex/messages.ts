@@ -19,9 +19,12 @@ export const list = query({
 export const send = mutation({
   args: { body: v.string(), author: v.string() },
   handler: async (ctx, { body, author }) => {
+    // Mark complete as true as long as the body is not the string "..."
+    const complete = (body !== "..." && author === "TanAI");
     // Send our message.
-    await ctx.db.insert("messages", { body, author });
+    await ctx.db.insert("messages", { body, author, complete });
 
+    // Check for AI invocation.
     if (body.indexOf("@gpt") !== -1) {
       // Fetch the latest n messages to send as context.
       // The default order is by creation time.
@@ -30,8 +33,9 @@ export const send = mutation({
       messages.reverse();
       // Insert a message with a placeholder body.
       const messageId = await ctx.db.insert("messages", {
-        author: "ChatGPT",
+        author: "TanAI",
         body: "...",
+        complete: false
       });
       // Schedule an action that calls ChatGPT and updates the message.
       ctx.scheduler.runAfter(0, internal.openai.chat, { messages, messageId });
@@ -41,9 +45,9 @@ export const send = mutation({
 
 // Updates a message with a new body.
 export const update = internalMutation({
-  args: { messageId: v.id("messages"), body: v.string() },
-  handler: async (ctx, { messageId, body }) => {
-    await ctx.db.patch(messageId, { body });
+  args: { messageId: v.id("messages"), body: v.string(), complete: v.boolean() },
+  handler: async (ctx, { messageId, body, complete }) => {
+    await ctx.db.patch(messageId, { body, complete });
   },
 });
 
@@ -60,6 +64,7 @@ export const clearTable = internalMutation({
     await ctx.db.insert("messages", {
       author: "Tan",
       body: "Hello! I'm Tan. Let's get this DB going! :D",
+      complete: true
     });
   },
 });
