@@ -10,11 +10,11 @@ const overrideModelName = secretConfig.modelName || "gpt-3.5-turbo";
 
 // How often to update the DB to stream the response back to the client
 // Recommended is 200 at scale, but leave at 1 for smooth local testing
-const chunkCacheSize = 100;
+const chunkCacheSize = 1;
 
 // EXPERIMENTAL MAGIC COMMANDS
 const experimentalMode = true;
-const magicStrings = ["*RESET*", "*DEL*"];
+const magicStrings = ["*RESET*", "*DEL*", "*FIX*"];
 
 type ChatParams = {
   messages: Doc<"messages">[];
@@ -43,6 +43,17 @@ export const chat = internalAction({
           if (magicString === "*DEL*") {
             // call internal.deleteTable
             await ctx.runMutation(internal.messages.removeLast);
+            return;
+          }
+          // Add more magic strings here
+          if (magicString === "*FIX*") {
+            // call internal.fixTable
+            await ctx.runMutation(internal.messages.fixIncompletes);
+            await ctx.runMutation(internal.messages.update, {
+              messageId,
+              body: "Fixing up any table errors!",
+              complete: true
+            });
             return;
           }
         throw new Error(`Magic string ${magicString} not implemented yet`);

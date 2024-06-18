@@ -6,7 +6,6 @@ import { v } from "convex/values";
 
 const messagesInContext = 10;
 
-
 export const list = query({
   handler: async (ctx): Promise<Doc<"messages">[]> => {
     // Grab the most recent messages.
@@ -19,9 +18,8 @@ export const list = query({
 export const send = mutation({
   args: { body: v.string(), author: v.string(), delay: v.optional(v.number())},
   handler: async (ctx, { body, author, delay }) => {
-    // Mark complete as true as long as the body is not the string "..."
-    const complete = !(body === "..." && author === "TanAI");
-    // Send our message.
+    const complete = true
+    // Add user message to DB
     await ctx.db.insert("messages", { body, author, complete });
 
     // Check for AI invocation.
@@ -35,11 +33,11 @@ export const send = mutation({
       const messageId = await ctx.db.insert("messages", {
         author: "TanAI",
         body: "...",
-        complete: complete
+        complete: false
       });
       // use delay if provided, otherwise default to 0.
       const delayInMs = delay || 0;
-      // Schedule an action that calls ChatGPT and updates the message.
+      // Schedule an action that calls the LLM and updates the message.
       ctx.scheduler.runAfter(delayInMs, internal.openai.chat, { messages, messageId });
     }
   },
@@ -65,7 +63,7 @@ export const clearTable = internalMutation({
     // Replace the DB with a simple seed message.
     await ctx.db.insert("messages", {
       author: "Tan",
-      body: "Hello! I'm Tan. Let's get this DB going! :D",
+      body: "Hello! I'm Tan. Let's get this chatroom going! :D",
       complete: true
     });
   },
@@ -89,4 +87,44 @@ export const removeLast = internalMutation({
     await ctx.db.delete(messages[2]._id);
     await ctx.db.delete(messages[3]._id);
   }
+});
+
+export const fixIncompletes = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+     // Filter messages that are incomplete.
+    const filteredMessages = await ctx.db.query("messages")
+    .filter((q) => q.eq(q.field("complete"), false))
+    .collect()
+    if (filteredMessages.length === 0) {
+      return 0;
+    }
+    // const allMessages = await ctx.db.query("messages").collect();
+    // Fix TanAI authored messages with a body starting with "OpenAI call failed"
+    let count  = 0;
+    let delay = 0;
+    for(const message of filteredMessages) {
+      if(message.body.startsWith("OpenAI call failed") && message.author === "TanAI") {
+        const messageId = message._id;
+        const specificMessageTime = message._creationTime
+        const messages = await ctx.db
+          .query("messages")
+          .filter((q) => q.lt(q.field("_creationTime"), specificMessageTime)) // less than specificMessageTime
+          .order("desc") // order by creation time in descending order
+          .take(5) // take the first 5 rather than messagesInContext
+
+        // Reverse the list so that it's in chronological order.
+        messages.reverse();
+        console.log(`Fixing ID: ${messageId}`);
+        ctx.scheduler.runAfter(delay, internal.openai.chat, { messages, messageId });
+        count++;
+        if (count % 5 === 0) {
+          // For rate limits (Currently 5 seconds every 5 queries, can find a sweeter spot if needed)
+          delay += 5000;
+        }
+      }
+     };
+     // Return the number of fixed messages.
+    return count;
+   },
 });
