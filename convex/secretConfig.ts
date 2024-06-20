@@ -3,7 +3,7 @@ const togetherSecretKey = process.env.OPENAI_API_KEY || "BAD API KEY"
 // const openAISecretKey = process.env.OPENAI_API_KEY
 
 const togetherBaseURL = "https://api.together.xyz/v1"
-const togetherModelName = "Qwen/Qwen2-72B-Instruct"
+const togetherModelName = "meta-llama/Llama-3-70b-chat-hf"
 
 const lmstudioBaseURL = "http://localhost:1234/v1"
 const ollamaBaseURL = "http://localhost:11434/v1"
