@@ -4,4 +4,4 @@ dist
 .env.local
 convex_local_storage/
 convex-local-backend
-convex/secretConfig.ts
+pydb/.venv/
