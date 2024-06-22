@@ -22,8 +22,26 @@ type ChatParams = {
   messageId: Id<"messages">;
 };
 
+import { Langfuse } from "langfuse";
+
+const langfuse = new Langfuse({
+  secretKey: process.env.LANGFUSE_SECRET_KEY,
+  publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+  baseUrl: "https://us.cloud.langfuse.com"
+});
+
 export const chat = internalAction({
   handler: async (ctx, { contextMessages, messageId }: ChatParams) => {
+    const trace = langfuse.trace({
+      name: "tan-talk",
+      userId: "messages.ts",
+    });
+    trace.event({
+      name: "chat",
+      metadata: {
+        id: messageId,
+      },
+    });
     // Remove all incomplete messages from the context
     contextMessages = contextMessages.filter((m) => m.complete);
     if (contextMessages.length === 0) {
@@ -42,6 +60,13 @@ export const chat = internalAction({
           if (magicString === "*RESET*") {
             // call internal.clearTable
             await ctx.runMutation(internal.messages.clearTable);
+            trace.event({
+              name: "clearTable",
+              metadata: {
+                message: currMessage
+              }
+            });
+            await langfuse.shutdownAsync();
             return;
           }
           if (magicString === "*DEL*") {
@@ -55,6 +80,14 @@ export const chat = internalAction({
             ids.push(messageId);
             // append the AI messageID to the ids
             await ctx.runMutation(internal.messages.removeLast, {ids});
+
+            trace.event({
+              name: "removeLast",
+              metadata: {
+                message: currMessage
+              }
+            });
+            await langfuse.shutdownAsync();
             return;
           }
           // Add more magic strings here
@@ -66,12 +99,25 @@ export const chat = internalAction({
               body: "Your table shall be full once more!",
               complete: true
             });
+            trace.event({
+              name: "fixTable",
+              metadata: {
+                message: currMessage
+              }
+            });
+            await langfuse.shutdownAsync();
             return;
           }
         throw new Error(`Magic string ${magicString} not implemented yet`);
         }
       }
     }
+    // trace.update({ input: { context: contextMessages } });
+    const generation = trace.generation({
+      name: "Chat completion",
+      model: overrideModelName,
+      input: { context: contextMessages },
+    });
     try {
       let body = "";
       let partSize = 0;
@@ -92,6 +138,7 @@ export const chat = internalAction({
           })),
         ],
       });
+      
       let mutationCount = 0;
       // Stream the response back to the client
       for await (const part of stream) {
@@ -111,6 +158,14 @@ export const chat = internalAction({
           }
         }
       }
+      generation.end({
+        output: body,
+      });
+      trace.update({
+        input: contextMessages[contextMessages.length - 1].body,
+        output: body,
+      });
+      // Send an update to the client
       // Update with finalized body and set complete to true
       await ctx.runMutation(internal.messages.update, {
         messageId,
@@ -120,6 +175,8 @@ export const chat = internalAction({
       mutationCount++;
       partSize = 0;
       // partSize should always be zero to ensure stream has been flushed into DB
+      await langfuse.shutdownAsync();
+      
     } catch (e) {
       if (e instanceof OpenAI.APIError) {
         console.error(e.status);
