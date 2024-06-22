@@ -13,16 +13,20 @@ const overrideModelName = secretConfig.modelName || "gpt-3.5-turbo";
 const chunkCacheSize = 1;
 
 // EXPERIMENTAL MAGIC COMMANDS
-const experimentalMode = true;
+const checkForMagicStrings = false;
 const magicStrings = ["*RESET*", "*DEL*", "*FIX*"];
 
+
 type ChatParams = {
-  messages: Doc<"messages">[];
+  contextMessages: Doc<"messages">[];
   messageId: Id<"messages">;
 };
+
 export const chat = internalAction({
-  handler: async (ctx, { messages, messageId }: ChatParams) => {
-    if (messages.length === 0) {
+  handler: async (ctx, { contextMessages, messageId }: ChatParams) => {
+    // Remove all incomplete messages from the context
+    contextMessages = contextMessages.filter((m) => m.complete);
+    if (contextMessages.length === 0) {
       throw new Error("No messages found!");
     }
     // WARNING: This prioritizes the secretConfig API key over the environment variable!
@@ -30,9 +34,9 @@ export const chat = internalAction({
     const baseURL = overrideBaseUrl;
     const openai = new OpenAI({ baseURL, apiKey });
 
-    if (experimentalMode) {
-      const currMessage = messages[messages.length - 1].body;
-      // If the message includes a magic string, handle it
+    if (checkForMagicStrings) {
+      const currMessage = contextMessages[contextMessages.length - 1].body;
+      // If the message ends in a magic string, handle it
       for (const magicString of magicStrings) {
         if (currMessage.endsWith(magicString)) {
           if (magicString === "*RESET*") {
@@ -41,8 +45,16 @@ export const chat = internalAction({
             return;
           }
           if (magicString === "*DEL*") {
-            // call internal.deleteTable
-            await ctx.runMutation(internal.messages.removeLast);
+            // if want to schedule, have to get message IDS first
+            const context = contextMessages[contextMessages.length - 1]
+            if (!context) {
+              throw new Error("No context found!");
+            }
+            const contextTime = context._creationTime;
+            const ids = await ctx.runQuery(internal.messages.getContextMessages, {refTime: contextTime});
+            ids.push(messageId);
+            // append the AI messageID to the ids
+            await ctx.runMutation(internal.messages.removeLast, {ids});
             return;
           }
           // Add more magic strings here
@@ -51,7 +63,7 @@ export const chat = internalAction({
             await ctx.runMutation(internal.messages.fixIncompletes);
             await ctx.runMutation(internal.messages.update, {
               messageId,
-              body: "Fixing up any table errors!",
+              body: "Your table shall be full once more!",
               complete: true
             });
             return;
@@ -61,9 +73,9 @@ export const chat = internalAction({
       }
     }
     try {
+      let body = "";
+      let partSize = 0;
       const stream = await openai.chat.completions.create({
-        // model: "gpt-3.5-turbo", // "gpt-4" also works, but is so slow!
-        // Changed June 11 2024: Added TogetherAI as a provider
         model: overrideModelName,
         max_tokens: 1000,
         temperature: 0.3,
@@ -73,15 +85,15 @@ export const chat = internalAction({
             role: "system",
             content: "You are a terse bot in a group chat responding to q's. Respond naturally.",
           },
-          ...messages.map(({ body, author }) => ({
+          ...contextMessages.map(({ body, author }) => ({
             role:
               author === "TanAI" ? ("assistant" as const) : ("user" as const),
             content: body,
           })),
         ],
       });
-      let body = "";
-      let partSize = 0;
+      let mutationCount = 0;
+      // Stream the response back to the client
       for await (const part of stream) {
         if (part.choices[0].delta?.content) {
           const partContent = part.choices[0].delta.content;
@@ -94,6 +106,7 @@ export const chat = internalAction({
               body,
               complete: false,
             });
+            mutationCount++;
             partSize = 0;
           }
         }
@@ -104,7 +117,8 @@ export const chat = internalAction({
         body,
         complete: true,
       });
-      partSize = 0; 
+      mutationCount++;
+      partSize = 0;
       // partSize should always be zero to ensure stream has been flushed into DB
     } catch (e) {
       if (e instanceof OpenAI.APIError) {
