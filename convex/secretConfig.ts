@@ -3,10 +3,13 @@ const togetherSecretKey = process.env.OPENAI_API_KEY || "BAD API KEY"
 // const openAISecretKey = process.env.OPENAI_API_KEY
 
 const togetherBaseURL = "https://api.together.xyz/v1"
-const togetherModelName = "Qwen/Qwen2-72B-Instruct"
+const togetherModelName = "meta-llama/Llama-3-70b-chat-hf"
 
 const lmstudioBaseURL = "http://localhost:1234/v1"
 const ollamaBaseURL = "http://localhost:11434/v1"
+
+const openRouterBaseURL = "https://openrouter.ai/api/v1"
+const openRouterModeName = "anthropic/claude-3.5-sonnet"
 
 interface secretConfigSchema {
     baseURL?: string;
@@ -24,6 +27,12 @@ const ollamaConfig: secretConfigSchema = {
     baseURL: ollamaBaseURL,
     modelName: "llama3",
     apiKey: "Ollama"
+};
+
+const openRouterConfig: secretConfigSchema = {
+    baseURL: openRouterBaseURL,
+    modelName: openRouterModeName,
+    apiKey: process.env.OPENAI_API_KEY || "BAD KEY",
 };
 
 // const openAIConfig: secretConfigSchema = {
