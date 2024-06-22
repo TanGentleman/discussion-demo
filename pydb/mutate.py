@@ -16,7 +16,7 @@ def send_message(client: ConvexClient, author: str, body: str, delay: int | None
         args = dict(body=body, author=author)
         if delay is not None:
             args['delay'] = delay
-        client.mutation("messages:send", dict(body=body, author=author, delay=delay))
+        client.mutation("messages:send", args)
         print("Message sent successfully!")
     except ConvexError as err:
         print(f"Error sending message: {err}")
@@ -99,6 +99,23 @@ def send_message_list(client: ConvexClient, messages: list[tuple[str, str]]):
     assert 0 < len(messages) <= 5, "Invalid number of messages to send."
     for author, body in messages:
         send_message(client, author, body)
+
+def replace_with_seed_file(client: ConvexClient, seed_file: str = "pydb/seed.json"):
+    import json
+    seed = {}
+    with open(seed_file, "r") as f:
+        seed = json.load(f)
+    if "data" not in seed:
+        raise ValueError("Invalid seed file.")
+    for doc in seed["data"]:
+        # Make sure the author, body, and complete fields are present
+        assert "author" in doc and "body" in doc and "complete" in doc, "Invalid seed document."
+    
+    print("Replacing message collection with seed data...")
+    message_list = [(doc["author"], doc["body"]) for doc in seed["data"]]
+    clear_table(client)
+    send_message_list(client, message_list)
+    print("Done.")
 
 def get_response_from_sample(client: ConvexClient, sample: str | None = None):
     """
@@ -200,7 +217,7 @@ def main():
 if __name__ == "__main__":
     client = ConvexClient(DEPLOYMENT_URL)
     # send_message(client, "Python pinger", "@gpt continue the story...", 5000)
-    scan_incompletes(client)
+    replace_with_seed_file(client)
     
     # test_function(client)
     # old_main(client)
